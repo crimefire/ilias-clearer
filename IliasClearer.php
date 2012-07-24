@@ -20,6 +20,14 @@ class IliasClearer
 
     private $ILIAS_TREE_ID = 1;
     private $m_db;
+    private $TREE_TABLE_LAYOUT = array(
+        'tree'   => array('int(11)', 'NO', 'MUL', 0, ''),
+        'child'  => array('int(11)', 'NO', 'MUL', 0, ''),
+        'parent' => array('int(11)', 'YES', 'MUL', null, ''),
+        'lft'    => array('int(11)', 'NO', 'MUL', 0, ''),
+        'rgt'    => array('int(11)', 'NO', '', 0, ''),
+        'depth'  => array('smallint(6)', 'NO', '', 0, '')
+    );
     
     /**
      * Checks config variables and files, opens Database connection
@@ -54,7 +62,14 @@ class IliasClearer
             exit();
         }
 
-        // parse command line and execute given action or print usage info        
+        // check layout of tree table
+        if (!$this->checkTreeTableLayout()) {
+            echo 'Layout of tree table has changed.'."\n";
+            echo 'Please check the script and adjust the table layout.'."\n";
+            exit();
+        }
+
+        // parse command line and execute given action or print usage info
         $action = (count($argv) == 2) ? $argv[1] : '';
         switch ($action) {
             case 'archive':
@@ -127,6 +142,7 @@ class IliasClearer
      * Moves a tree into another one
      * @param $sourceId ID of tree to move
      * @param $targetId ID of tree where the source should be placed
+     * @see ilTree::moveTree in Services/Tree/classes/class.ilTree.php
      */
     private function moveTree($sourceId, $targetId)
     {
@@ -342,6 +358,41 @@ class IliasClearer
         $stmt->close();
         echo 'Backup successful'."\n";
         return true;
+    }
+    
+    /**
+     * Checks if the layout of the tree table matches the this script is build for
+     * @return bool
+     */
+    private function checkTreeTableLayout()
+    {
+        $layoutOk = true;
+        $layout = $this->TREE_TABLE_LAYOUT;
+        $stmt = $this->m_db->prepare("SHOW COLUMNS FROM tree");
+        $stmt->execute();
+        $stmt->bind_result($field, $type, $null, $key, $default, $extra);
+        while ($stmt->fetch()) {
+            if (!array_key_exists($field, $layout)) {
+                $layoutOk = false;
+                break;
+            }
+            if ($layout[$field][0] != $type || $layout[$field][1] != $null || $layout[$field][2] != $key ||
+                $layout[$field][3] != $default || $layout[$field][4] != $extra) {
+                $layoutOk = false;
+                break;
+            }
+            $layout[$field]['checked'] = true;
+        }
+        $stmt->close();
+        
+        foreach ($layout as $field => $data) {
+            if (!array_key_exists('checked', $data) || $data['checked'] !== true) {
+                $layoutOk = false;
+                break;
+            }
+        }
+        
+        return $layoutOk;
     }
 }
 
