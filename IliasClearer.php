@@ -58,7 +58,8 @@ class IliasClearer
         $action = (count($argv) == 2) ? $argv[1] : '';
         switch ($action) {
             case 'archive':
-                $this->moveCoursesToArchive();
+                if ($this->backupTreeTable())
+                    $this->moveCoursesToArchive();
                 break;
             case 'listEmptyCourses':
                 $this->listEmptyCourses();
@@ -314,6 +315,33 @@ class IliasClearer
         }
         $stmt->close();
         return $courses;
+    }
+    
+    /**
+     * Creates a backup of the tree table
+     * @return bool
+     */
+    private function backupTreeTable()
+    {
+        $backupTable = 'tree_bak_'.date('YmdHis');
+        echo 'Backing up tree table to '.$backupTable."\n";
+        $stmt = $this->m_db->prepare("CREATE TABLE ".$backupTable." LIKE tree");
+        if (!$stmt->execute()) {
+            $stmt->close();
+            echo 'Backup table could not be created'."\n";
+            return false;
+        }
+        $stmt->close();
+        
+        $stmt = $this->m_db->prepare("INSERT INTO ".$backupTable." SELECT * FROM tree");
+        if (!$stmt->execute()) {
+            $stmt->close();
+            echo 'Filling backup table with data failed'."\n";
+            return false;
+        }
+        $stmt->close();
+        echo 'Backup successful'."\n";
+        return true;
     }
 }
 
