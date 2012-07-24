@@ -2,12 +2,12 @@
 /**
  * This class provides some functions for clearing up the messed ILIAS categories
  * @author  Daniel Kabel <daniel.kabel@me.com>
- * @version 1.0
+ * @version 1.1
  */
 class IliasClearer
 {
     /**
-     * Edit the next four variables to your needs
+     * Edit the next five variables to your needs
      */
     // Full path to ILIAS installation (e.g. /srv/www/ilias)
     private $PATH_TO_ILIAS_INSTALLATION = '.';
@@ -17,6 +17,9 @@ class IliasClearer
     private $ILIAS_MAIN_CATEGORY_ID = 0;
     // ref id of archive category
     private $ILIAS_ARCHIVE_CATEGORY_ID = 0;
+    // ref id of category for empty courses
+    private $ILIAS_EMPTY_COURSE_CATEGORY_ID = 0;
+
 
     private $ILIAS_TREE_ID = 1;
     private $m_db;
@@ -52,6 +55,14 @@ class IliasClearer
             echo 'Unsupported database type "'.$iliasIni['db']['type'].'"'."\n";
             exit();
         }
+
+        // Check if script is configured
+        if ($this->ILIAS_ARCHIVE_CATEGORY_ID == 0 || $this->ILIAS_EMPTY_COURSE_CATEGORY_ID == 0 ||
+            $this->ILIAS_MAIN_CATEGORY_ID == 0) {
+            echo 'Please configure the script and set values for ILIAS_ARCHIVE_CATEGORY_ID, '. 
+                 'ILIAS_EMPTY_COURSE_CATEGORY_ID and ILIAS_MAIN_CATEGORY_ID'."\n";
+            exit();
+        }
         
         // Open Database
         $this->m_db = new mysqli($iliasIni['db']['host'], $iliasIni['db']['user'], 
@@ -73,8 +84,10 @@ class IliasClearer
         $action = (count($argv) == 2) ? $argv[1] : '';
         switch ($action) {
             case 'archive':
-                if ($this->backupTreeTable())
+                if ($this->backupTreeTable()) {
+                    $this->moveEmptyCourses();
                     $this->moveCoursesToArchive();
+                }
                 break;
             case 'listEmptyCourses':
                 $this->listEmptyCourses();
@@ -82,6 +95,7 @@ class IliasClearer
             default:
                 echo 'Usage: php '.$argv[0].' <archive|listEmptyCourses>'."\n\n";
                 echo '  archive         : moves courses created before the last year to archive'."\n";
+                echo '                    and empty courses older than two years into "empty course" category'."\n";
                 echo '  listEmptyCourses: print a list of courses with no contents'."\n";
                 echo "\n";
                 exit();
@@ -131,13 +145,30 @@ class IliasClearer
     {
         $courses = $this->emptyCourses();
         echo 'Listing empty courses'."\n\n";
-        echo 'ref_id'."\t".'| title'."\n";
-        echo '-----------------------------------'."\n";
+        echo 'ref_id'."\t".'| created'."\t\t".'| title'."\n";
+        echo '-------------------------------------------------------------'."\n";
         foreach ($courses as $course) {
-            echo $course['ref_id']."\t".'| '.$course['title']."\n";
+            echo $course['ref_id']."\t".'| '.$course['created']."\t".'| '.$course['title']."\n";
         }
     }
     
+    /**
+     * Moves empty courses created earlier than the last year to the "Emtpy course" category 
+     */
+    private function moveEmptyCourses()
+    {
+        echo 'Moving empty courses older than two years to category '.$this->ILIAS_EMPTY_COURSE_CATEGORY_ID."\n";
+        $counter = 0;
+        $courses = $this->emptyCourses();
+        foreach ($courses as $course) {
+            if (substr($course['created'], 0, 4) > date('Y')-2)
+                continue;
+            $this->moveTree($course['ref_id'], $this->ILIAS_EMPTY_COURSE_CATEGORY_ID);
+            $counter++;
+        }
+        echo 'Moved '.$counter.' empty courses'."\n";
+    }
+
     /**
      * Moves a tree into another one
      * @param $sourceId ID of tree to move
@@ -308,7 +339,7 @@ class IliasClearer
     private function emptyCourses()
     {
         $courses = array();
-        $stmt = $this->m_db->prepare("SELECT T.child, OD.title
+        $stmt = $this->m_db->prepare("SELECT T.child, OD.title, OD.create_date
                                     FROM tree T 
                                     JOIN object_reference OREF ON OREF.ref_id=T.child
                                     JOIN object_data OD ON OD.obj_id=OREF.obj_id
@@ -322,11 +353,12 @@ class IliasClearer
                                     )=0");
         $stmt->bind_param('i', $this->ILIAS_MAIN_CATEGORY_ID);
         $stmt->execute();
-        $stmt->bind_result($child, $title);
+        $stmt->bind_result($child, $title, $created);
         while ($stmt->fetch()) {
             $courses[] = array(
-                'ref_id' => $child,
-                'title'  => $title
+                'ref_id'  => $child,
+                'title'   => $title,
+                'created' => $created
             );
         }
         $stmt->close();
