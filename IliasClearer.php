@@ -2,7 +2,7 @@
 /**
  * This class provides some functions for clearing up the messed ILIAS categories
  * @author  Daniel Kabel <daniel.kabel@me.com>
- * @version 1.1
+ * @version 1.2
  */
 class IliasClearer
 {
@@ -13,7 +13,7 @@ class IliasClearer
     private $PATH_TO_ILIAS_INSTALLATION = '.';
     // ILIAS client name (e.g. unihalle)
     private $ILIAS_CLIENT = 'ilias';
-    // ref id of main category
+    // ref id of main category (e.g. MLU)
     private $ILIAS_MAIN_CATEGORY_ID = 0;
     // ref id of archive category
     private $ILIAS_ARCHIVE_CATEGORY_ID = 0;
@@ -206,13 +206,13 @@ class IliasClearer
         
         if (empty($source) || empty($target)) {
             echo 'Objects not found in tree'."\n";
-            exit();
+            return;
         }
         
         // Check target not child of source
         if ($target['lft'] >= $source['lft'] && $target['rgt'] <= $source['rgt']) {
             echo 'Error moving node: Target is child of source'."\n";
-            exit();
+            return;
         }
         
         // Now spread the tree at the target location. After this update the table should be still in a consistent state.
